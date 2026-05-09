@@ -51,6 +51,9 @@ out/
 .env.local
 .env.*.local
 
+# Claude Code — local configuration
+.claude/
+
 # Vector DB
 chroma/
 
