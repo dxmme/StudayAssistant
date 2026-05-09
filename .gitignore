@@ -1,0 +1,57 @@
+# Data & uploads
+data/
+*.db
+*.sqlite
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv/
+venv/
+ENV/
+
+# Backend tooling
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Node & Frontend
+node_modules/
+.next/
+out/
+.pnpm-store/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Vector DB
+chroma/
+
+# PDF uploads (implicit in data/)

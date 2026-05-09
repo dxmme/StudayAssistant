@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "studyassistant-backend"
+version = "0.0.1"
+description = "StudyAssistant backend — ML-Master learning companion"
+requires-python = ">=3.12"
+authors = [
+    {name = "StudyAssistant", email = "user@local"}
+]
+
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlalchemy",
+    "alembic",
+    "pydantic",
+    "pydantic-settings",
+    "python-multipart",
+    "anthropic",
+    "fsrs",
+]
+
+[project.optional-dependencies]
+ingest = [
+    "chromadb",
+    "pymupdf",
+    "marker-pdf",
+    "tiktoken",
+    "openai",
+]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+    "ruff",
+    "black",
+    "mypy",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "live: requires ANTHROPIC_API_KEY and makes real API calls (deselect with -m 'not live')",
+    "live_pdf: requires marker-pdf model download and pymupdf (deselect with -m 'not live_pdf')",
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+[[tool.mypy.overrides]]
+module = [
+    "chromadb.*",
+    "pymupdf.*",
+    "marker.*",
+    "fsrs.*",
+]
+ignore_missing_imports = true
