@@ -31,20 +31,28 @@ ENV/
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
+.coverage
+htmlcov/
+*.log
 
 # Node & Frontend
 node_modules/
 .next/
 out/
 .pnpm-store/
+dist/
+build/
 
-# IDE
+# IDE & OS
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 .DS_Store
+Thumbs.db
+*.sublime-project
+*.sublime-workspace
 
 # Environment
 .env
