@@ -13,12 +13,12 @@ Persönlicher Lernassistent für ML-Master Tübingen. Materialien rein → Lernp
 |---|---|---|
 | Phase 0 — Foundations | ✅ Complete (2026-05-08) | 7 backend / 2 frontend |
 | Phase 1 — Lernkern | ✅ Complete (2026-05-09) | 99 backend / 17 frontend |
-| Phase 2 — Analytics & Profile | 🔨 In Progress | 110 backend / 24 frontend |
+| Phase 2 — Analytics & Profile | ✅ Complete (2026-05-09) | 127 backend / 29 frontend |
 
 **Quick-Start:**
 ```bash
-cd backend && uv run pytest -m "not live" -q   # expect: 99 passed
-cd frontend && npm test                         # expect: 17 passed
+cd backend && uv run pytest -m "not live" -q   # expect: 127 passed
+cd frontend && npm test                         # expect: 29 passed
 cd frontend && npm run dev                      # :3000
 ```
 
@@ -390,13 +390,23 @@ Vollständiges Vokabular: `.claude/GLOSSARY.md`
 
 ---
 
-## Phase 2 — Upcoming
+## Phase 2 — Complete
+
+Alle 6 Specs implementiert:
+1. **Spec 2.1** — User Profiles & Preferences ✅
+2. **Spec 2.2** — Progress Dashboard ✅
+3. **Spec 2.3** — Analytics ✅
+4. **Spec 2.4** — Multi-Concept Review ✅
+5. **Spec 2.5** — Concept Graph Visualization ✅
+6. **Spec 2.6** — Plan Engine (Daily Session Generation) ✅
+
+---
+
+## Phase 3 — Upcoming
 
 Aus `research/06_implementation_roadmap.md`:
-1. **Spec 2.1** — User Profiles & Preferences
-2. **Spec 2.2** — Progress Dashboard (Charts, Stats)
-3. **Spec 2.3** — Analytics (FSRS-Effektivität, Time-to-Mastery)
-4. **Spec 2.4** — Multi-Concept Review (Batch-Reviews)
-5. **Spec 2.5** — Concept Graph Visualization (Prereq-Beziehungen)
+1. **Spec 3.1** — Worked Examples (LLM-generierte Lösungsskizzen)
+2. **Spec 3.2** — Beweis-Reconstruction (Proof Checker + Hints)
+3. **Spec 3.3** — Knowledge Graph Refinement (Feedback-Loop)
 
-Start: `/grill-me phase-2` → `/spec <name>` → Implementierung.
+Start: `/grill-me phase-3` → `/spec <name>` → Implementierung.

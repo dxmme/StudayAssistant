@@ -26,6 +26,7 @@ class CardUpdate(BaseModel):
     bloom_level: Optional[int] = None
     concept_id: Optional[str] = None
     archived: Optional[bool] = None
+    proof_mode: Optional[bool] = None
 
 
 class CardResponse(BaseModel):
@@ -41,6 +42,7 @@ class CardResponse(BaseModel):
     lapse_count: int
     created_at: Optional[datetime]
     archived: bool
+    proof_mode: bool = False
 
     model_config = {"from_attributes": True}
 

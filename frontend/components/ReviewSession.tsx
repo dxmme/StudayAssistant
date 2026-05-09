@@ -1,7 +1,8 @@
 'use client'
-import { useCallback, useEffect, useReducer } from 'react'
+import { useCallback, useEffect, useReducer, useState } from 'react'
 import { CardView } from './CardView'
 import { RatingBar } from './RatingBar'
+import { WorkedExampleModal } from './WorkedExampleModal'
 import type { Card } from '@/types/card'
 
 interface Props {
@@ -82,6 +83,7 @@ const INITIAL: State = {
 
 export function ReviewSession({ courseId }: Props) {
   const [state, dispatch] = useReducer(reducer, INITIAL)
+  const [workedExampleOpen, setWorkedExampleOpen] = useState(false)
 
   useEffect(() => {
     fetch(`/api/courses/${courseId}/cards/due`)
@@ -103,6 +105,7 @@ export function ReviewSession({ courseId }: Props) {
           body: JSON.stringify({ rating }),
         })
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        setWorkedExampleOpen(false)
         dispatch({ type: 'RATING_DONE', wasLapse: rating === 1, rating })
       } catch {
         dispatch({ type: 'RATING_ERROR', message: 'Netzwerkfehler — bitte nochmal versuchen.' })
@@ -188,9 +191,32 @@ export function ReviewSession({ courseId }: Props) {
         </div>
       </main>
 
-      <footer className="px-6 py-4 border-t border-gray-200 flex justify-center">
+      <footer className="px-6 py-4 border-t border-gray-200 flex flex-col items-center gap-3">
         <RatingBar flipped={flipped} disabled={state.requestInFlight} />
+        {flipped && (
+          <button
+            onClick={() => setWorkedExampleOpen(true)}
+            className="text-sm text-blue-600 hover:text-blue-800 underline"
+          >
+            Lösung anzeigen
+          </button>
+        )}
+        {flipped && card.proof_mode && (
+          <a
+            href={`/proof/${card.id}`}
+            className="text-sm text-violet-600 hover:text-violet-800 underline"
+          >
+            Beweis rekonstruieren
+          </a>
+        )}
       </footer>
+
+      {workedExampleOpen && (
+        <WorkedExampleModal
+          cardId={card.id}
+          onClose={() => setWorkedExampleOpen(false)}
+        />
+      )}
 
       {state.errorToast && (
         <div

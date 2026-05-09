@@ -26,3 +26,4 @@ class Card(Base):
     lapse_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    proof_mode: Mapped[bool] = mapped_column(Boolean, default=False)

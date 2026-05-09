@@ -21,6 +21,7 @@ export interface Card {
   lapse_count: number
   created_at?: string | null
   archived: boolean
+  proof_mode?: boolean
 }
 
 export interface ReviewResponse {

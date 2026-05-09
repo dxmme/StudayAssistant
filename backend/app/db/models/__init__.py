@@ -8,6 +8,8 @@ from app.db.models.plans import PlanSession
 from app.db.models.quiz import QuizAttempt, QuizQuestion
 from app.db.models.reviews import Review
 from app.db.models.user_preferences import UserPreferences
+from app.db.models.proof_attempts import ProofAttempt
+from app.db.models.refinement_proposals import RefinementProposal
 from app.db.models.worked_examples import WorkedExample
 
 __all__ = [
@@ -23,6 +25,8 @@ __all__ = [
     "QuizAttempt",
     "QuizQuestion",
     "Review",
+    "ProofAttempt",
+    "RefinementProposal",
     "UserPreferences",
     "WorkedExample",
 ]
