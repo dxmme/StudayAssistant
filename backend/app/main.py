@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import cards, coaching, concepts, courses, health, materials, me
+from app.api import cards, coaching, concepts, courses, health, materials, me, plans
 from app.core.config import settings
 from app.core.logging import setup_logging
 
@@ -24,3 +24,4 @@ app.include_router(materials.router)
 app.include_router(concepts.router)
 app.include_router(cards.router, prefix="/api")
 app.include_router(coaching.router)
+app.include_router(plans.router)
