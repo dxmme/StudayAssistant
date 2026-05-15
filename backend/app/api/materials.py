@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -12,7 +12,7 @@ from app.api.schemas.materials import MaterialResponse, MaterialType
 from app.core.config import settings
 from app.db.models.courses import Course
 from app.db.models.materials import Material, MaterialChunk
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
 from app.services import parse_service
 from app.services.ingest import IngestError, run_ingest
 from app.services.rag import get_rag_service
@@ -32,16 +32,15 @@ def _upload_dir(course_id: str) -> Path:
 def upload_material(
     course_id: str,
     file: UploadFile,
+    background_tasks: BackgroundTasks,
     type: MaterialType = Form(...),
     title: str = Form(None),
     db: Session = Depends(get_db),
 ) -> Material:
-    # Course must exist
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
-    # Validate content-type
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=415, detail="Only application/pdf accepted")
 
@@ -50,23 +49,15 @@ def upload_material(
 
     upload_dir = _upload_dir(course_id)
     pdf_path = upload_dir / f"{material_id}.pdf"
-    md_path = upload_dir / f"{material_id}.md"
 
-    # Save PDF to disk
     pdf_bytes = file.file.read()
     pdf_path.write_bytes(pdf_bytes)
 
-    # Parse synchronously
-    t0 = time.monotonic()
-    try:
-        markdown_text, page_count = parse_service.parse_pdf(pdf_path)
-    except Exception as exc:
-        pdf_path.unlink(missing_ok=True)
-        logger.error("parse_failed", extra={"material_id": material_id, "error": str(exc)})
-        raise HTTPException(status_code=422, detail={"error": "parse_failed", "detail": str(exc)})
-
-    md_path.write_text(markdown_text, encoding="utf-8")
-    parse_ms = round((time.monotonic() - t0) * 1000)
+    # Quick page count via pymupdf — no ML, <100 ms
+    import fitz  # type: ignore[import-untyped]
+    doc = fitz.open(str(pdf_path))
+    page_count = len(doc)
+    doc.close()
 
     material = Material(
         id=material_id,
@@ -76,6 +67,7 @@ def upload_material(
         file_path=str(pdf_path),
         page_count=page_count,
         indexed=False,
+        parse_status="pending",
         uploaded_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
     db.add(material)
@@ -89,10 +81,32 @@ def upload_material(
             "course_id": course_id,
             "file_size_bytes": len(pdf_bytes),
             "page_count": page_count,
-            "parse_duration_ms": parse_ms,
         },
     )
+
+    background_tasks.add_task(_parse_background, material_id, pdf_path)
     return material
+
+
+def _parse_background(material_id: str, pdf_path: Path) -> None:
+    """Run Claude PDF extraction in background after upload response is returned."""
+    db = SessionLocal()
+    try:
+        markdown_text, _ = parse_service.parse_pdf(pdf_path)
+        pdf_path.with_suffix(".md").write_text(markdown_text, encoding="utf-8")
+        material = db.query(Material).filter(Material.id == material_id).first()
+        if material:
+            material.parse_status = "done"
+            db.commit()
+        logger.info("parse_background_done", extra={"material_id": material_id})
+    except Exception as exc:
+        logger.error("parse_background_failed", extra={"material_id": material_id, "error": str(exc)})
+        material = db.query(Material).filter(Material.id == material_id).first()
+        if material:
+            material.parse_status = "error"
+            db.commit()
+    finally:
+        db.close()
 
 
 @router.get("/api/courses/{course_id}/materials", response_model=list[MaterialResponse])
@@ -101,6 +115,14 @@ def list_materials(course_id: str, db: Session = Depends(get_db)) -> list[Materi
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
     return db.query(Material).filter(Material.course_id == course_id).all()
+
+
+@router.get("/api/materials/{material_id}/parse-status")
+def get_parse_status(material_id: str, db: Session = Depends(get_db)) -> dict[str, str]:
+    material = db.query(Material).filter(Material.id == material_id).first()
+    if not material:
+        raise HTTPException(status_code=404, detail="Material not found")
+    return {"material_id": material_id, "status": material.parse_status}
 
 
 @router.get("/api/materials/{material_id}/markdown")

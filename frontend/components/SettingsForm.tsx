@@ -33,6 +33,17 @@ const DEFAULT_AVAILABILITY: WeeklyAvailability = {
   mon: 120, tue: 120, wed: 120, thu: 120, fri: 120, sat: 0, sun: 0,
 }
 
+const inputStyle = {
+  backgroundColor: 'var(--surface-2)',
+  border: '1px solid var(--border)',
+  color: 'var(--text)',
+  borderRadius: '8px',
+  padding: '8px 12px',
+  fontSize: '14px',
+  outline: 'none',
+  width: '100%',
+}
+
 export function SettingsForm() {
   const [displayName, setDisplayName] = useState('')
   const [availability, setAvailability] = useState<WeeklyAvailability>(DEFAULT_AVAILABILITY)
@@ -90,82 +101,101 @@ export function SettingsForm() {
   }
 
   if (loading) {
-    return <p className="text-gray-500">Lade Einstellungen…</p>
+    return <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Lade Einstellungen…</p>
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="display-name">
-          Name
-        </label>
-        <input
-          id="display-name"
-          type="text"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="Dein Name"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
+      <div
+        className="p-5 rounded-xl space-y-5"
+        style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
+      >
+        <div>
+          <label
+            className="block text-xs mb-1.5"
+            style={{ color: 'var(--text-muted)' }}
+            htmlFor="display-name"
+          >
+            Name
+          </label>
+          <input
+            id="display-name"
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="Dein Name"
+            style={inputStyle}
+          />
+        </div>
 
-      <div>
-        <p className="text-sm font-medium text-gray-700 mb-3">
-          Wöchentliche Verfügbarkeit (Minuten pro Tag)
-        </p>
-        <div className="flex gap-3">
-          {DAY_LABELS.map(({ key, label }) => (
-            <div key={key} className="flex flex-col items-center gap-1">
-              <label className="text-xs text-gray-500" htmlFor={`day-${key}`}>
-                {label}
-              </label>
-              <input
-                id={`day-${key}`}
-                type="number"
-                min={0}
-                max={480}
-                value={availability[key]}
-                onChange={(e) => handleDayChange(key, e.target.value)}
-                className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-                aria-label={`Verfügbarkeit ${label}`}
-              />
-            </div>
-          ))}
+        <div>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+            Wöchentliche Verfügbarkeit (Minuten pro Tag)
+          </p>
+          <div className="flex gap-2">
+            {DAY_LABELS.map(({ key, label }) => (
+              <div key={key} className="flex flex-col items-center gap-1 flex-1">
+                <label
+                  className="text-xs"
+                  style={{ color: 'var(--text-muted)' }}
+                  htmlFor={`day-${key}`}
+                >
+                  {label}
+                </label>
+                <input
+                  id={`day-${key}`}
+                  type="number"
+                  min={0}
+                  max={480}
+                  value={availability[key]}
+                  onChange={(e) => handleDayChange(key, e.target.value)}
+                  className="text-center"
+                  style={{
+                    ...inputStyle,
+                    padding: '6px 4px',
+                    fontSize: '12px',
+                  }}
+                  aria-label={`Verfügbarkeit ${label}`}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label
+            className="block text-xs mb-1.5"
+            style={{ color: 'var(--text-muted)' }}
+            htmlFor="max-session"
+          >
+            Max. Session-Dauer (Minuten)
+          </label>
+          <input
+            id="max-session"
+            type="number"
+            min={15}
+            max={180}
+            value={maxSession}
+            onChange={(e) => setMaxSession(Math.max(15, Math.min(180, parseInt(e.target.value, 10) || 90)))}
+            style={{ ...inputStyle, width: '96px' }}
+            aria-label="Maximale Session-Dauer"
+          />
         </div>
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="max-session">
-          Max. Session-Dauer (Minuten)
-        </label>
-        <input
-          id="max-session"
-          type="number"
-          min={15}
-          max={180}
-          value={maxSession}
-          onChange={(e) => setMaxSession(Math.max(15, Math.min(180, parseInt(e.target.value, 10) || 90)))}
-          className="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          aria-label="Maximale Session-Dauer"
-        />
-      </div>
-
       {error && (
-        <p className="text-sm text-red-600" role="alert">
-          {error}
-        </p>
+        <p className="text-sm text-red-400" role="alert">{error}</p>
       )}
       {saved && (
-        <p className="text-sm text-green-600" role="status">
-          Gespeichert.
-        </p>
+        <p className="text-sm" style={{ color: '#4ade80' }} role="status">Gespeichert.</p>
       )}
 
       <div className="flex justify-end">
         <button
           type="submit"
           disabled={saving}
-          className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
+          className="px-5 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-40"
+          style={{ backgroundColor: 'var(--accent)', color: '#000' }}
         >
           {saving ? 'Speichern…' : 'Speichern'}
         </button>

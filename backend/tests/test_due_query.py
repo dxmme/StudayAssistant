@@ -33,7 +33,7 @@ def test_due_returns_only_past_due(client, db_session):
     _set_due(client, db_session, c2["id"], now - timedelta(hours=1))
     _set_due(client, db_session, c3["id"], now + timedelta(days=3))
 
-    r = client.get(f"/api/courses/{_COURSE}/cards/due?on=2026-05-09")
+    r = client.get(f"/api/courses/{_COURSE}/cards/due")
     # c1 and c2 are due, c3 is not
     ids = [c["id"] for c in r.json()]
     assert c1["id"] in ids
@@ -51,7 +51,7 @@ def test_due_excludes_archived(client, db_session):
 
     client.delete(f"/api/cards/{c2['id']}")  # soft delete
 
-    r = client.get(f"/api/courses/{_COURSE}/cards/due?on=2026-05-09")
+    r = client.get(f"/api/courses/{_COURSE}/cards/due")
     ids = [c["id"] for c in r.json()]
     assert c1["id"] in ids
     assert c2["id"] not in ids
@@ -67,7 +67,7 @@ def test_due_sorted_ascending(client, db_session):
     _set_due(client, db_session, c2["id"], now - timedelta(days=1))
     _set_due(client, db_session, c3["id"], now - timedelta(hours=6))
 
-    r = client.get(f"/api/courses/{_COURSE}/cards/due?on=2026-05-09")
+    r = client.get(f"/api/courses/{_COURSE}/cards/due")
     dues = [c["fsrs_state"]["due"] for c in r.json()]
     assert dues == sorted(dues)
 
@@ -77,7 +77,7 @@ def test_due_empty_when_none_due(client, db_session):
     future = datetime.now(timezone.utc) + timedelta(days=30)
     _set_due(client, db_session, c["id"], future)
 
-    r = client.get(f"/api/courses/{_COURSE}/cards/due?on=2026-05-09")
+    r = client.get(f"/api/courses/{_COURSE}/cards/due")
     assert r.json() == []
 
 

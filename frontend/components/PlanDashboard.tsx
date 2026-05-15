@@ -95,19 +95,22 @@ function PlanSessionCard({
   const completed = plan.status === 'completed'
 
   return (
-    <div className="border border-gray-200 rounded-lg p-4 bg-white">
+    <div
+      className="rounded-xl p-5"
+      style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
+    >
       <div className="flex justify-between items-start mb-1">
-        <h2 className="font-semibold text-gray-900">{course.name}</h2>
-        <span className="text-xs text-gray-500 ml-2">
+        <h2 className="font-semibold text-sm" style={{ color: 'var(--text)' }}>{course.name}</h2>
+        <span className="text-xs ml-2" style={{ color: 'var(--text-muted)' }}>
           {days !== null ? `Klausur in ${days} Tagen` : 'Kein Klausurdatum'}
         </span>
       </div>
-      <div className="text-xs text-gray-500 mb-3">
+      <div className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
         {planPhaseLabel(course.exam_date)} &mdash; {plan.duration_min ?? 0} min geplant
       </div>
 
       {plan.items.length === 0 ? (
-        <p className="text-sm text-gray-400">Heute nichts fällig.</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Heute nichts fällig.</p>
       ) : (
         <ul className="space-y-2 mb-4">
           {plan.items.map((item, idx) => (
@@ -117,13 +120,17 @@ function PlanSessionCard({
                 checked={item.done}
                 disabled={completed || item.done}
                 onChange={() => onItemDone(plan.id, idx)}
-                className="h-4 w-4 accent-blue-600"
+                className="h-4 w-4"
+                style={{ accentColor: 'var(--accent)' }}
                 data-testid={`item-checkbox-${idx}`}
               />
-              <span className={`text-sm flex-1 ${item.done ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+              <span
+                className="text-sm flex-1"
+                style={{ color: item.done ? 'var(--text-muted)' : 'var(--text)', textDecoration: item.done ? 'line-through' : 'none' }}
+              >
                 {itemTypeLabel(item.type)} &mdash; {item.title}
               </span>
-              <span className="text-xs text-gray-400 shrink-0">~{item.estimated_min} min</span>
+              <span className="text-xs shrink-0" style={{ color: 'var(--text-muted)' }}>~{item.estimated_min} min</span>
             </li>
           ))}
         </ul>
@@ -132,13 +139,14 @@ function PlanSessionCard({
       {!completed ? (
         <button
           onClick={() => onComplete(plan.id)}
-          className="text-sm text-blue-600 hover:underline"
+          className="text-sm font-medium transition-colors"
+          style={{ color: 'var(--accent)' }}
           data-testid="complete-button"
         >
           Session abschließen
         </button>
       ) : (
-        <span className="text-sm text-green-600">Abgeschlossen</span>
+        <span className="text-sm" style={{ color: '#4ade80' }}>Abgeschlossen</span>
       )}
     </div>
   )
@@ -200,34 +208,41 @@ export function PlanDashboard() {
 
   if (phase === 'loading') {
     return (
-      <div className="p-6">
-        <h1 className="text-xl font-semibold mb-4">Tagesplan</h1>
-        <p className="text-gray-400 text-sm">Lade Pläne…</p>
+      <div className="min-h-[calc(100vh-3.5rem)] py-12">
+        <div className="max-w-2xl mx-auto px-6">
+          <h1 className="text-2xl font-semibold mb-10 tracking-tight" style={{ color: 'var(--text)' }}>Tagesplan</h1>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Lade Pläne…</p>
+        </div>
       </div>
     )
   }
 
   if (phase === 'error') {
     return (
-      <div className="p-6">
-        <h1 className="text-xl font-semibold mb-4">Tagesplan</h1>
-        <p className="text-red-500 text-sm">Pläne konnten nicht geladen werden.</p>
+      <div className="min-h-[calc(100vh-3.5rem)] py-12">
+        <div className="max-w-2xl mx-auto px-6">
+          <h1 className="text-2xl font-semibold mb-10 tracking-tight" style={{ color: 'var(--text)' }}>Tagesplan</h1>
+          <p className="text-sm text-red-400">Pläne konnten nicht geladen werden.</p>
+        </div>
       </div>
     )
   }
 
   if (phase === 'empty') {
     return (
-      <div className="p-6">
-        <h1 className="text-xl font-semibold mb-4">Tagesplan</h1>
-        <p className="text-gray-400 text-sm">Keine Kurse vorhanden.</p>
+      <div className="min-h-[calc(100vh-3.5rem)] py-12">
+        <div className="max-w-2xl mx-auto px-6">
+          <h1 className="text-2xl font-semibold mb-10 tracking-tight" style={{ color: 'var(--text)' }}>Tagesplan</h1>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Keine Kurse vorhanden.</p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-xl font-semibold mb-4">Tagesplan</h1>
+    <div className="min-h-[calc(100vh-3.5rem)] py-12">
+      <div className="max-w-2xl mx-auto px-6">
+      <h1 className="text-2xl font-semibold mb-10 tracking-tight" style={{ color: 'var(--text)' }}>Tagesplan</h1>
       <div className="space-y-4">
         {entries.map((entry) => (
           <PlanSessionCard
@@ -237,6 +252,7 @@ export function PlanDashboard() {
             onComplete={handleComplete}
           />
         ))}
+      </div>
       </div>
     </div>
   )

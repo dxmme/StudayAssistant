@@ -1,3 +1,4 @@
+import base64
 import logging
 import time
 from dataclasses import dataclass
@@ -8,6 +9,17 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponen
 
 from app.core.config import settings
 from app.services.llm_models import TIER_MODEL_MAP, Tier
+
+_PDF_EXTRACT_SYSTEM = (
+    "You are a precise document extractor. "
+    "Convert the PDF content to clean Markdown. "
+    "Preserve headings, bullet points, numbered lists, and table structure. "
+    "For mathematical formulas, write them as LaTeX inside $...$ (inline) or $$...$$ (block). "
+    "For figures, plots, and diagrams write a concise description in italics: _[Figure: ...]_. "
+    "Output only the Markdown — no preamble, no commentary."
+)
+_PDF_EXTRACT_PROMPT = "Extract the full content of this PDF as structured Markdown."
+_PDF_CHUNK_PAGES = 95  # max pages per API call (Claude limit is 100)
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +150,67 @@ class LLMGateway:
             ),
             stop_reason=response.stop_reason or "",
         )
+
+    def extract_pdf(self, pdf_bytes: bytes) -> str:
+        """Extract text from a PDF via Claude's document understanding.
+
+        Splits PDFs exceeding _PDF_CHUNK_PAGES into page-range chunks and
+        concatenates the results. Uses the cheap (Haiku) tier.
+        """
+        import fitz  # type: ignore[import-untyped]
+
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        page_count = len(doc)
+        doc.close()
+
+        if page_count <= _PDF_CHUNK_PAGES:
+            return self._extract_pdf_chunk(pdf_bytes)
+
+        # Split into page-range chunks using pymupdf
+        parts: list[str] = []
+        for start in range(0, page_count, _PDF_CHUNK_PAGES):
+            end = min(start + _PDF_CHUNK_PAGES, page_count) - 1
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            chunk_doc = fitz.open()
+            chunk_doc.insert_pdf(doc, from_page=start, to_page=end)
+            chunk_bytes: bytes = chunk_doc.tobytes()
+            chunk_doc.close()
+            doc.close()
+            parts.append(self._extract_pdf_chunk(chunk_bytes))
+
+        return "\n\n---\n\n".join(parts)
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=2, min=2, max=8),
+        retry=retry_if_exception(_is_overloaded),
+        reraise=True,
+    )
+    def _extract_pdf_chunk(self, pdf_bytes: bytes) -> str:
+        model = TIER_MODEL_MAP["cheap"]
+        b64 = base64.standard_b64encode(pdf_bytes).decode()
+        message = self._client.messages.create(
+            model=model,
+            max_tokens=8096,
+            system=_PDF_EXTRACT_SYSTEM,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "document",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "application/pdf",
+                                "data": b64,
+                            },
+                        },
+                        {"type": "text", "text": _PDF_EXTRACT_PROMPT},
+                    ],
+                }
+            ],
+        )
+        return message.content[0].text if message.content else ""
 
     def complete_stream(
         self,

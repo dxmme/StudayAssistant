@@ -21,6 +21,7 @@ dependencies = [
     "python-multipart",
     "anthropic",
     "fsrs",
+    "openai>=1.109.1",
 ]
 
 [project.optional-dependencies]

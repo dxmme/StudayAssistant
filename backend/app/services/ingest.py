@@ -4,6 +4,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -99,23 +100,42 @@ def run_ingest(material: Material, db: Session, rag: RAGService) -> IngestResult
         gateway = LLMGateway()
         concepts = extractor_svc.extract_concepts(markdown, gateway)
 
-        # Step 7 — Write concepts to DB
+        # Step 7 — Write concepts to DB, merging duplicates by name within the course
         for concept in concepts:
-            concept_id = str(uuid.uuid4())
-            db_concept = Concept(
-                id=concept_id,
-                course_id=material.course_id,
-                name=concept.name,
-                type=concept.type,
-                summary=concept.summary,
-                # source_pages schema: [{material_id, pages: [int]}]
-                source_pages=[{"material_id": material.id, "pages": concept.source_pages}],
-                prerequisites=[],
-                target_bloom=None,
-                importance=None,
-            )
-            db.add(db_concept)
-            created_concept_ids.append(concept_id)
+            existing = db.scalars(
+                select(Concept).where(
+                    Concept.course_id == material.course_id,
+                    func.lower(Concept.name) == concept.name.lower(),
+                )
+            ).first()
+
+            new_source = {"material_id": material.id, "pages": concept.source_pages}
+
+            if existing:
+                # Merge: add this material's source pages, keep better summary
+                sources = list(existing.source_pages or [])
+                # Avoid duplicate source entries for the same material
+                if not any(s.get("material_id") == material.id for s in sources):
+                    sources.append(new_source)
+                existing.source_pages = sources
+                # Prefer longer / more detailed summary
+                if len(concept.summary) > len(existing.summary or ""):
+                    existing.summary = concept.summary
+            else:
+                concept_id = str(uuid.uuid4())
+                db_concept = Concept(
+                    id=concept_id,
+                    course_id=material.course_id,
+                    name=concept.name,
+                    type=concept.type,
+                    summary=concept.summary,
+                    source_pages=[new_source],
+                    prerequisites=[],
+                    target_bloom=None,
+                    importance=None,
+                )
+                db.add(db_concept)
+                created_concept_ids.append(concept_id)
         db.flush()
 
         # Step 8 — Mark indexed

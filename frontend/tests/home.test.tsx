@@ -4,10 +4,10 @@ import { Math } from '@/components/Math'
 import HomePage from '@/app/page'
 
 describe('HomePage', () => {
-  it('renders title and subtitle', () => {
+  it('renders title and nav links', () => {
     const { container } = render(<HomePage />)
     expect(screen.getByText('StudyAssistant')).toBeTruthy()
-    expect(screen.getByText('Phase 0 — Skeleton')).toBeTruthy()
+    expect(container.querySelector('a[href="/courses"]')).toBeTruthy()
   })
 
   it('renders Math component with katex', () => {

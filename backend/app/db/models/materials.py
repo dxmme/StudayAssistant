@@ -20,6 +20,7 @@ class Material(Base):
     page_count: Mapped[Optional[int]] = mapped_column(Integer)
     indexed: Mapped[bool] = mapped_column(Boolean, default=False)
     uploaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    parse_status: Mapped[str] = mapped_column(Text, default="pending")
 
 
 class MaterialChunk(Base):

@@ -15,5 +15,6 @@ class MaterialResponse(BaseModel):
     page_count: Optional[int]
     indexed: bool
     uploaded_at: Optional[datetime]
+    parse_status: str = "pending"
 
     model_config = {"from_attributes": True}

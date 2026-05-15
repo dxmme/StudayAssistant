@@ -80,22 +80,19 @@ def test_upload_course_not_found(client):
     assert resp.status_code == 404
 
 
-def test_upload_parse_error_cleans_up(client, tmp_path):
+def test_upload_parse_error_still_returns_201(client):
+    # Parse failures no longer block the upload response — they happen in a background task.
+    # The material row is created with parse_status='pending'; the background task later sets 'error'.
     course_id = _make_course(client)
-    # Override the autouse mock to raise
     with patch("app.api.materials.parse_service.parse_pdf", side_effect=RuntimeError("corrupt pdf")):
         resp = _upload(client, course_id)
-    assert resp.status_code == 422
+    assert resp.status_code == 201
     body = resp.json()
-    assert body["detail"]["error"] == "parse_failed"
-    # PDF must be cleaned up
-    upload_root = client.app.dependency_overrides  # just confirming no leftover files
-    # Check by listing upload dir — should have only the course subdir (empty or absent)
-    uploads = list((client.app.state.__dict__.get("_upload_dir_tmp", tmp_path) or tmp_path).rglob("*.pdf"))
-    # The real check: parse error route deletes the file
-    # We verify by inspecting the DB: no material row was added
-    resp2 = client.get(f"/api/courses/{course_id}/materials")
-    assert resp2.json() == []
+    # parse_status starts as pending; background task (different DB session) updates it async
+    assert body["parse_status"] in ("pending", "error")
+    # Material row must exist in DB
+    materials = client.get(f"/api/courses/{course_id}/materials").json()
+    assert len(materials) == 1
 
 
 def test_list_materials(client):

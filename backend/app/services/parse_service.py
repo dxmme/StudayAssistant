@@ -4,28 +4,34 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SLOW_PARSE_THRESHOLD_MS = 120_000
+SLOW_PARSE_THRESHOLD_MS = 60_000
 
 
 def parse_pdf(pdf_path: Path) -> tuple[str, int]:
-    """Convert PDF to markdown via marker-pdf. Returns (markdown, page_count)."""
-    t0 = time.monotonic()
+    """Extract PDF content to Markdown via Claude document understanding.
 
-    # Page count via pymupdf (fast, no model download)
+    Falls back to pymupdf text extraction when the API key is unavailable.
+    Returns (markdown, page_count).
+    """
     import fitz  # type: ignore[import-untyped]
 
-    doc = fitz.open(str(pdf_path))
+    pdf_bytes = pdf_path.read_bytes()
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     page_count = len(doc)
     doc.close()
 
-    # Markdown conversion via marker-pdf
-    from marker.converters.pdf import PdfConverter  # type: ignore[import-untyped]
-    from marker.models import create_model_dict  # type: ignore[import-untyped]
-    from marker.output import text_from_rendered  # type: ignore[import-untyped]
+    t0 = time.monotonic()
 
-    converter = PdfConverter(artifact_dict=create_model_dict())
-    rendered = converter(str(pdf_path))
-    markdown_text, _images, _meta = text_from_rendered(rendered)
+    from app.core.config import settings
+
+    if settings.anthropic_api_key:
+        from app.services.llm_gateway import LLMGateway
+
+        gw = LLMGateway()
+        markdown_text = gw.extract_pdf(pdf_bytes)
+    else:
+        logger.warning("parse_fallback_pymupdf", extra={"path": str(pdf_path)})
+        markdown_text = _pymupdf_extract(fitz.open(stream=pdf_bytes, filetype="pdf"))
 
     elapsed_ms = (time.monotonic() - t0) * 1000
     if elapsed_ms > SLOW_PARSE_THRESHOLD_MS:
@@ -35,3 +41,17 @@ def parse_pdf(pdf_path: Path) -> tuple[str, int]:
         )
 
     return markdown_text, page_count
+
+
+def _pymupdf_extract(doc: object) -> str:
+    """Lightweight fallback: plain text extraction via pymupdf (no ML, no API)."""
+    import fitz  # type: ignore[import-untyped]
+
+    pages_md: list[str] = []
+    for page in doc:  # type: ignore[union-attr]
+        blocks = page.get_text("blocks")
+        lines = [b[4].strip() for b in sorted(blocks, key=lambda b: (b[1], b[0])) if b[4].strip()]
+        if lines:
+            pages_md.append("\n\n".join(lines))
+    doc.close()  # type: ignore[union-attr]
+    return "\n\n---\n\n".join(pages_md)

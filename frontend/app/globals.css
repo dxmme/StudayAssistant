@@ -2,7 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg: #080808;
+  --surface: #111111;
+  --surface-2: #1a1a1a;
+  --border: #222222;
+  --border-2: #2e2e2e;
+  --text: #e5e5e5;
+  --text-muted: #666666;
+  --text-dim: #444444;
+  --accent: #ffffff;
+  --surface-raised: #242424;
+}
+
+html,
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* KaTeX display math */
 .katex-container {
   display: flex;
   justify-content: center;
+}
+
+/* Dark scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-2);
+  border-radius: 3px;
+}
+
+/* Date input dark */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.4;
 }
