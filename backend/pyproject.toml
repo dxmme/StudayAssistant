@@ -20,8 +20,13 @@ dependencies = [
     "pydantic-settings",
     "python-multipart",
     "anthropic",
+    "tenacity",
     "fsrs",
     "openai>=1.109.1",
+    "chromadb",
+    "pymupdf",
+    "marker-pdf",
+    "tiktoken",
 ]
 
 [project.optional-dependencies]
