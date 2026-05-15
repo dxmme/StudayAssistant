@@ -44,6 +44,8 @@ export default function ConceptsListing({ courseId }: { courseId: string }) {
   const [hierarchy, setHierarchy] = useState<ConceptNode[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [generatingCards, setGeneratingCards] = useState(false)
+  const [generationMessage, setGenerationMessage] = useState<string | null>(null)
 
   const buildHierarchy = (concepts: Concept[]): ConceptNode[] => {
     const conceptMap = new Map(concepts.map(c => [c.id, c]))
@@ -105,6 +107,47 @@ export default function ConceptsListing({ courseId }: { courseId: string }) {
   useEffect(() => {
     fetchConcepts()
   }, [courseId])
+
+  const generateMissingCards = async () => {
+    setGeneratingCards(true)
+    setGenerationMessage(null)
+    try {
+      const response = await fetch(`/api/courses/${courseId}/cards/generate-missing`, {
+        method: 'POST',
+      })
+
+      if (!response.ok) {
+        throw new Error('Card generation failed')
+      }
+
+      const data: {
+        generated: number
+        already_exist: number
+        errors: number
+        total_concepts: number
+        total_cards: number
+      } = await response.json()
+
+      let message = `Generated ${data.generated} card${data.generated !== 1 ? 's' : ''}`
+      if (data.already_exist > 0) {
+        message += `, ${data.already_exist} already exist`
+      }
+      if (data.errors > 0) {
+        message += `, ${data.errors} error${data.errors !== 1 ? 's' : ''}`
+      }
+      message += ` (${data.total_cards}/${data.total_concepts} concepts)`
+
+      setGenerationMessage(message)
+      setTimeout(() => setGenerationMessage(null), 4000)
+    } catch (err) {
+      setGenerationMessage(
+        err instanceof Error ? err.message : 'Unknown error during card generation'
+      )
+      setTimeout(() => setGenerationMessage(null), 4000)
+    } finally {
+      setGeneratingCards(false)
+    }
+  }
 
   const renderNode = (node: ConceptNode) => {
     const typeColor = TYPE_COLORS[node.concept.type as keyof typeof TYPE_COLORS] || TYPE_COLORS.default
@@ -275,20 +318,50 @@ export default function ConceptsListing({ courseId }: { courseId: string }) {
               {concepts.length} Konzept{concepts.length !== 1 ? 'e' : ''} · Hierarchisch sortiert nach Abhängigkeiten
             </p>
           </div>
-          <button
-            onClick={fetchConcepts}
-            disabled={loading}
-            className="px-4 py-2 rounded-lg font-medium text-sm transition-colors"
+          <div className="flex gap-2">
+            <button
+              onClick={generateMissingCards}
+              disabled={generatingCards || loading || concepts.length === 0}
+              className="px-4 py-2 rounded-lg font-medium text-sm transition-colors"
+              style={{
+                backgroundColor: generatingCards ? 'var(--bg-secondary)' : 'var(--accent)',
+                color: generatingCards ? 'var(--text-muted)' : 'white',
+                cursor: generatingCards ? 'not-allowed' : 'pointer',
+                opacity: generatingCards || loading ? 0.6 : 1,
+              }}
+            >
+              {generatingCards ? 'Generiere...' : 'Karten generieren'}
+            </button>
+            <button
+              onClick={fetchConcepts}
+              disabled={loading}
+              className="px-4 py-2 rounded-lg font-medium text-sm transition-colors"
+              style={{
+                backgroundColor: loading ? 'var(--bg-secondary)' : 'var(--accent)',
+                color: loading ? 'var(--text-muted)' : 'white',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.6 : 1,
+              }}
+            >
+              {loading ? 'Lädt...' : 'Aktualisieren'}
+            </button>
+          </div>
+        </div>
+
+        {/* Generation message */}
+        {generationMessage && (
+          <div
+            className="mb-6 p-4 rounded-lg border-l-4"
             style={{
-              backgroundColor: loading ? 'var(--bg-secondary)' : 'var(--accent)',
-              color: loading ? 'var(--text-muted)' : 'white',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.6 : 1,
+              borderColor: 'var(--accent)',
+              backgroundColor: 'rgba(59, 130, 246, 0.1)',
             }}
           >
-            {loading ? 'Lädt...' : 'Aktualisieren'}
-          </button>
-        </div>
+            <p style={{ color: 'var(--text)' }} className="text-sm">
+              {generationMessage}
+            </p>
+          </div>
+        )}
 
         {/* Concepts list */}
         {concepts.length > 0 && (

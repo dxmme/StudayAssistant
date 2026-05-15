@@ -10,8 +10,11 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas.cards import CardCreate, CardResponse, CardUpdate, ReviewRequest, ReviewResponse
 from app.db.models.cards import Card
+from app.db.models.concepts import Concept
 from app.db.models.reviews import Review
 from app.db.session import get_db
+from app.services import card_generator as card_gen_svc
+from app.services.rag import get_rag_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["cards"])
@@ -105,6 +108,58 @@ def list_cards(
     if not include_archived:
         q = q.filter(Card.archived == False)  # noqa: E712
     return [_card_to_response(c) for c in q.all()]
+
+
+@router.post("/courses/{course_id}/cards/generate-missing")
+def generate_missing_cards(
+    course_id: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Generate cards for concepts that don't have any yet."""
+    rag = get_rag_service()
+
+    # Find concepts without cards
+    concepts_with_cards = db.query(Card.concept_id).filter(
+        Card.course_id == course_id,
+        Card.archived == False,  # noqa: E712
+    ).distinct()
+
+    concepts_without_cards = db.query(Concept).filter(
+        Concept.course_id == course_id,
+        ~Concept.id.in_(concepts_with_cards),
+    ).all()
+
+    generated = 0
+    errors = 0
+
+    for concept in concepts_without_cards:
+        try:
+            card = card_gen_svc.generate_card_for_concept(concept, db, rag)
+            db.add(card)
+            generated += 1
+        except Exception as exc:
+            logger.warning(
+                "generate_missing_card_failed",
+                extra={"concept_id": concept.id, "error": str(exc)},
+            )
+            errors += 1
+
+    db.commit()
+
+    # Total counts
+    total_concepts = db.query(Concept).filter(Concept.course_id == course_id).count()
+    total_cards = db.query(Card).filter(
+        Card.course_id == course_id,
+        Card.archived == False,  # noqa: E712
+    ).count()
+
+    return {
+        "generated": generated,
+        "already_exist": total_cards - generated,
+        "errors": errors,
+        "total_concepts": total_concepts,
+        "total_cards": total_cards,
+    }
 
 
 @router.get("/courses/{course_id}/cards/due", response_model=list[CardResponse])
