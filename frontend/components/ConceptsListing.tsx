@@ -20,6 +20,25 @@ interface ConceptNode {
   children: ConceptNode[]
 }
 
+const BLOOM_LABELS: Record<number, string> = {
+  1: 'Remember',
+  2: 'Understand',
+  3: 'Apply',
+  4: 'Analyze',
+  5: 'Evaluate',
+  6: 'Create',
+}
+
+const formatPercentage = (value: number): string => String(Math.floor(value * 100))
+
+const TYPE_COLORS = {
+  definition: { bg: '#dbeafe', text: '#0369a1' },
+  theorem: { bg: '#fce7f3', text: '#be185d' },
+  proof: { bg: '#f3e8ff', text: '#7e22ce' },
+  example: { bg: '#fef3c7', text: '#b45309' },
+  default: { bg: '#f3f4f6', text: '#6b7280' },
+} as const
+
 export default function ConceptsListing({ courseId }: { courseId: string }) {
   const [concepts, setConcepts] = useState<Concept[]>([])
   const [hierarchy, setHierarchy] = useState<ConceptNode[]>([])
@@ -31,11 +50,8 @@ export default function ConceptsListing({ courseId }: { courseId: string }) {
     const roots: ConceptNode[] = []
     const processed = new Set<string>()
 
-    // Rekursiv Kinder für jeden Concept finden
     const buildNode = (concept: Concept, level: number): ConceptNode => {
       const children: ConceptNode[] = []
-
-      // Finde alle Konzepte, die diesen Concept als Prerequisite haben
       for (const c of concepts) {
         if (
           !processed.has(c.id) &&
@@ -46,15 +62,9 @@ export default function ConceptsListing({ courseId }: { courseId: string }) {
           children.push(buildNode(c, level + 1))
         }
       }
-
-      return {
-        concept,
-        level,
-        children,
-      }
+      return { concept, level, children }
     }
 
-    // Starte mit Konzepten ohne Prerequisites
     for (const concept of concepts) {
       if (!concept.prerequisites || concept.prerequisites.length === 0) {
         processed.add(concept.id)
@@ -62,7 +72,6 @@ export default function ConceptsListing({ courseId }: { courseId: string }) {
       }
     }
 
-    // Verarbeite remaining concepts (mit ungültigen Prerequisites)
     for (const concept of concepts) {
       if (!processed.has(concept.id)) {
         processed.add(concept.id)
@@ -98,71 +107,92 @@ export default function ConceptsListing({ courseId }: { courseId: string }) {
   }, [courseId])
 
   const renderNode = (node: ConceptNode) => {
-    const indentClass = `ml-${node.level * 4}`
-    const paddingLeft = node.level * 16
+    const typeColor = TYPE_COLORS[node.concept.type as keyof typeof TYPE_COLORS] || TYPE_COLORS.default
+    const marginLeft = node.level * 24
 
     return (
       <div key={node.concept.id} data-concept data-concept-id={node.concept.id}>
         <div
-          className="px-4 py-3 border-l-2 border-transparent hover:border-blue-400 hover:bg-slate-50 transition-colors"
-          style={{ paddingLeft: `${paddingLeft}px` }}
+          className="group px-5 py-4 border-l-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-all duration-150"
+          style={{ marginLeft: `${marginLeft}px` }}
           data-level={node.level}
         >
-          <div className="flex items-start justify-between gap-3">
+          {/* Header: Name + Badge */}
+          <div className="flex items-start justify-between gap-3 mb-2">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="font-medium text-sm" style={{ color: 'var(--text)' }}>
-                  {node.concept.name}
-                </h3>
+              <h3
+                className="text-sm font-semibold leading-tight mb-1"
+                style={{ color: 'var(--text)' }}
+              >
+                {node.concept.name}
+              </h3>
+              <div className="flex items-center gap-2 flex-wrap">
                 <span
-                  className="text-xs px-2 py-0.5 rounded-full"
+                  className="text-xs font-medium px-2.5 py-1 rounded-md"
                   style={{
-                    backgroundColor: 'var(--bg-secondary)',
-                    color: 'var(--text-muted)',
+                    backgroundColor: typeColor.bg,
+                    color: typeColor.text,
                   }}
                 >
                   {node.concept.type}
                 </span>
-              </div>
-
-              {node.concept.summary && (
-                <p
-                  className="text-xs line-clamp-2"
-                  style={{ color: 'var(--text-muted)' }}
-                >
-                  {node.concept.summary}
-                </p>
-              )}
-
-              <div className="flex items-center gap-3 mt-2 text-xs">
-                {node.concept.importance && (
-                  <span style={{ color: 'var(--text-muted)' }}>
-                    Wichtigkeit: {(node.concept.importance * 100).toFixed(0)}%
-                  </span>
-                )}
-                {node.concept.source_pages && node.concept.source_pages.length > 0 && (
-                  <span style={{ color: 'var(--text-muted)' }}>
-                    Seite: {node.concept.source_pages.join(', ')}
+                {node.concept.target_bloom && (
+                  <span
+                    className="text-xs font-medium px-2.5 py-1 rounded-md"
+                    title="Bloom's Taxonomy Level"
+                    style={{
+                      backgroundColor: 'var(--bg-secondary)',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    {BLOOM_LABELS[node.concept.target_bloom]}
                   </span>
                 )}
               </div>
             </div>
 
-            {node.concept.target_bloom && (
+            {/* Importance badge */}
+            {node.concept.importance && node.concept.importance < 1 && (
               <div
-                className="text-xs px-2 py-1 rounded"
+                className="text-xs font-semibold px-2.5 py-1 rounded-md whitespace-nowrap"
                 style={{
                   backgroundColor: 'var(--bg-secondary)',
                   color: 'var(--text-muted)',
                 }}
-                title="Bloom-Level (1-6)"
               >
-                L{node.concept.target_bloom}
+                {formatPercentage(node.concept.importance)}%
               </div>
+            )}
+          </div>
+
+          {/* Summary */}
+          {node.concept.summary && (
+            <p className="mt-3 mb-3 text-sm leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+              {node.concept.summary}
+            </p>
+          )}
+
+          {/* Footer: Metadata */}
+          <div className="flex items-center gap-3 mt-3 text-xs">
+            {node.concept.source_pages && node.concept.source_pages.length > 0 && (
+              <span
+                style={{ color: 'var(--text-muted)' }}
+                className="flex items-center gap-1"
+              >
+                <span>📄</span>
+                <span>S. {node.concept.source_pages.join(', ')}</span>
+              </span>
+            )}
+            {node.level > 0 && (
+              <span style={{ color: 'var(--text-muted)' }} className="flex items-center gap-1">
+                <span>📚</span>
+                <span>Builds on {node.level} concept{node.level > 1 ? 's' : ''}</span>
+              </span>
             )}
           </div>
         </div>
 
+        {/* Render children */}
         {node.children.length > 0 && (
           <div>
             {node.children.map(child => renderNode(child))}
@@ -172,35 +202,22 @@ export default function ConceptsListing({ courseId }: { courseId: string }) {
     )
   }
 
-  return (
-    <div className="min-h-[calc(100vh-3.5rem)] py-12">
-      <div className="max-w-4xl mx-auto px-6">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text)' }}>
-            Konzepte
-          </h1>
-          <button
-            onClick={fetchConcepts}
-            disabled={loading}
-            className="px-4 py-2 rounded-lg font-medium text-sm transition-colors"
-            style={{
-              backgroundColor: loading ? 'var(--bg-secondary)' : 'var(--accent)',
-              color: loading ? 'var(--text-muted)' : 'white',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.6 : 1,
-            }}
-          >
-            {loading ? 'Lädt...' : 'Aktualisieren'}
-          </button>
-        </div>
-
-        {loading && concepts.length === 0 && (
+  if (loading && concepts.length === 0) {
+    return (
+      <div className="min-h-[calc(100vh-3.5rem)] py-12">
+        <div className="max-w-4xl mx-auto px-6">
           <div className="text-center py-12">
             <p style={{ color: 'var(--text-muted)' }}>Lade Konzepte...</p>
           </div>
-        )}
+        </div>
+      </div>
+    )
+  }
 
-        {error && (
+  if (error) {
+    return (
+      <div className="min-h-[calc(100vh-3.5rem)] py-12">
+        <div className="max-w-4xl mx-auto px-6">
           <div
             className="p-4 rounded-lg border-l-4"
             style={{
@@ -210,9 +227,15 @@ export default function ConceptsListing({ courseId }: { courseId: string }) {
           >
             <p style={{ color: '#ef4444' }}>{error}</p>
           </div>
-        )}
+        </div>
+      </div>
+    )
+  }
 
-        {!loading && concepts.length === 0 && !error && (
+  if (!loading && concepts.length === 0) {
+    return (
+      <div className="min-h-[calc(100vh-3.5rem)] py-12">
+        <div className="max-w-4xl mx-auto px-6">
           <div className="text-center py-12">
             <p style={{ color: 'var(--text-muted)' }} className="mb-6">
               Keine Konzepte gefunden.
@@ -234,9 +257,41 @@ export default function ConceptsListing({ courseId }: { courseId: string }) {
               Erneut versuchen
             </button>
           </div>
-        )}
+        </div>
+      </div>
+    )
+  }
 
-        {!loading && concepts.length > 0 && (
+  return (
+    <div className="min-h-[calc(100vh-3.5rem)] py-12">
+      <div className="max-w-4xl mx-auto px-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold mb-2" style={{ color: 'var(--text)' }}>
+              Konzepte
+            </h1>
+            <p style={{ color: 'var(--text-muted)' }} className="text-sm">
+              {concepts.length} Konzept{concepts.length !== 1 ? 'e' : ''} · Hierarchisch sortiert nach Abhängigkeiten
+            </p>
+          </div>
+          <button
+            onClick={fetchConcepts}
+            disabled={loading}
+            className="px-4 py-2 rounded-lg font-medium text-sm transition-colors"
+            style={{
+              backgroundColor: loading ? 'var(--bg-secondary)' : 'var(--accent)',
+              color: loading ? 'var(--text-muted)' : 'white',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+            }}
+          >
+            {loading ? 'Lädt...' : 'Aktualisieren'}
+          </button>
+        </div>
+
+        {/* Concepts list */}
+        {concepts.length > 0 && (
           <div
             className="border rounded-lg overflow-hidden"
             style={{

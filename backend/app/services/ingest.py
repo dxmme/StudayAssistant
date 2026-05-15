@@ -13,6 +13,7 @@ from app.db.models.materials import Material, MaterialChunk
 from app.services import chunker as chunker_svc
 from app.services import concept_extractor as extractor_svc
 from app.services import embedder as embedder_svc
+from app.services import card_generator as card_gen_svc
 from app.services.llm_gateway import LLMGateway
 from app.services.rag import RAGService
 
@@ -138,7 +139,22 @@ def run_ingest(material: Material, db: Session, rag: RAGService) -> IngestResult
                 created_concept_ids.append(concept_id)
         db.flush()
 
-        # Step 8 — Mark indexed
+        # Step 8 — Generate cards for new concepts
+        newly_created_concepts = db.query(Concept).filter(
+            Concept.id.in_(created_concept_ids)
+        ).all()
+        for concept in newly_created_concepts:
+            try:
+                card = card_gen_svc.generate_card_for_concept(concept, db, rag)
+                db.add(card)
+            except Exception as exc:
+                logger.warning(
+                    "card_generation_skipped",
+                    extra={"concept_id": concept.id, "error": str(exc)},
+                )
+        db.flush()
+
+        # Step 9 — Mark indexed
         material.indexed = True
         db.commit()
 
