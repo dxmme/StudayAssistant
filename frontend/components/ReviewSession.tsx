@@ -25,6 +25,7 @@ interface State {
   stats: Stats
   requestInFlight: boolean
   errorToast: string | null
+  isRefreshing: boolean
 }
 
 type Action =
@@ -34,14 +35,16 @@ type Action =
   | { type: 'RATING_DONE'; wasLapse: boolean; rating: number }
   | { type: 'RATING_ERROR'; message: string }
   | { type: 'DISMISS_TOAST' }
+  | { type: 'REFRESH_START' }
+  | { type: 'REFRESH_DONE'; cards: Card[] }
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case 'LOADED':
       if (action.cards.length === 0) {
-        return { ...state, cards: [], total: 0, phase: 'empty' }
+        return { ...state, cards: [], total: 0, phase: 'empty', isRefreshing: false }
       }
-      return { ...state, cards: action.cards, total: action.cards.length, phase: 'front' }
+      return { ...state, cards: action.cards, total: action.cards.length, phase: 'front', isRefreshing: false }
 
     case 'FLIP':
       if (state.phase !== 'front') return state
@@ -68,6 +71,15 @@ function reducer(state: State, action: Action): State {
 
     case 'DISMISS_TOAST':
       return { ...state, errorToast: null }
+
+    case 'REFRESH_START':
+      return { ...state, isRefreshing: true }
+
+    case 'REFRESH_DONE':
+      if (action.cards.length === 0) {
+        return { ...state, cards: [], total: 0, phase: 'empty', isRefreshing: false }
+      }
+      return { ...state, cards: action.cards, total: action.cards.length, currentIndex: 0, phase: 'front', isRefreshing: false }
   }
 }
 
@@ -79,18 +91,24 @@ const INITIAL: State = {
   stats: { reviewed: 0, lapses: 0, ratingSum: 0 },
   requestInFlight: false,
   errorToast: null,
+  isRefreshing: false,
 }
 
 export function ReviewSession({ courseId }: Props) {
   const [state, dispatch] = useReducer(reducer, INITIAL)
   const [workedExampleOpen, setWorkedExampleOpen] = useState(false)
 
-  useEffect(() => {
+  const loadCards = useCallback(() => {
+    dispatch({ type: 'REFRESH_START' })
     fetch(`/api/courses/${courseId}/cards/due`)
       .then((r) => r.json())
-      .then((cards: Card[]) => dispatch({ type: 'LOADED', cards }))
-      .catch(() => dispatch({ type: 'LOADED', cards: [] }))
+      .then((cards: Card[]) => dispatch({ type: 'REFRESH_DONE', cards }))
+      .catch(() => dispatch({ type: 'REFRESH_DONE', cards: [] }))
   }, [courseId])
+
+  useEffect(() => {
+    loadCards()
+  }, [courseId, loadCards])
 
   const submitRating = useCallback(
     async (rating: number) => {
@@ -155,7 +173,7 @@ export function ReviewSession({ courseId }: Props) {
         <div className="text-center max-w-md px-6">
           <h1 className="text-3xl font-bold mb-6">{heading}</h1>
           {state.stats.reviewed > 0 && (
-            <div className="space-y-2 text-gray-600">
+            <div className="space-y-2 text-gray-600 mb-6">
               <p>
                 Reviewed: <strong>{state.stats.reviewed}</strong>
               </p>
@@ -166,6 +184,21 @@ export function ReviewSession({ courseId }: Props) {
                 Ø Rating: <strong>{avgRating}</strong>
               </p>
             </div>
+          )}
+          {state.phase === 'empty' && (
+            <button
+              onClick={loadCards}
+              disabled={state.isRefreshing}
+              className="px-4 py-2 rounded-lg font-medium text-sm transition-colors"
+              style={{
+                backgroundColor: state.isRefreshing ? 'var(--bg-secondary, #f3f4f6)' : 'var(--accent, #3b82f6)',
+                color: state.isRefreshing ? 'var(--text-muted, #9ca3af)' : 'white',
+                cursor: state.isRefreshing ? 'not-allowed' : 'pointer',
+                opacity: state.isRefreshing ? 0.6 : 1,
+              }}
+            >
+              {state.isRefreshing ? 'Lädt…' : 'Aktualisieren'}
+            </button>
           )}
         </div>
       </div>
