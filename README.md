@@ -64,6 +64,10 @@ Das System bietet diese Techniken bewusst **nicht** an.
 - **Konzept-Extraktion** — LLM identifiziert atomare Lernziele aus deinem Material
 - **Lernkarten mit FSRS** — Rating 1–4, adaptives Scheduling, Tastaturkürzel
 - **Sokratisches Coaching** — SSE-Streaming, RAG-Kontext aus deinen PDFs, kein Antwort-Leaken
+  - **Socratic method refinement** — darf Missverständnisse nach genuinen Versuchen korrigieren mit präziser Definition
+  - **Dynamic length** — tieferes Coaching für neue Konzepte, schnellere Reviews für bekannte
+  - **Coach-readiness signal** — Coach signalisiert wann du bereit bist aufzuhören
+  - **Summary + MC-Quiz** — bei Sessionende: AI-generierter Recap + kleines Verständnis-Check-Quiz
 - **Tagesplan-Engine** — topologische Sortierung nach Konzept-Abhängigkeiten + FSRS-Filter
 - **Progress Dashboard** — Reviews letzte 7 Tage, Fälligkeiten, Lernstreak
 - **Analytics** — tägliche und monatliche Review-Statistiken
@@ -91,7 +95,7 @@ Das System bietet diese Techniken bewusst **nicht** an.
 | Spaced Repetition | py-fsrs |
 | Frontend | Next.js 16 (App Router) · React 19 · TypeScript strict · Tailwind 4 |
 | Mathe | KaTeX (Server-Side) + remark-math + rehype-katex |
-| Tests | pytest (158) · Vitest (49) |
+| Tests | pytest (214) · Vitest (67) |
 
 ---
 
@@ -285,10 +289,10 @@ Visualisierung aller Konzepte und ihrer Abhängigkeiten. Knoten mit vielen "Agai
 ## Teststatus
 
 ```bash
-# Backend (158 Tests)
+# Backend (214 Tests)
 cd backend && uv run pytest -m "not live" -q
 
-# Frontend (49 Tests)
+# Frontend (67 Tests)
 cd frontend && npm test
 
 # Typen & Linting
@@ -340,7 +344,9 @@ POST   /api/cards/{id}/proof-check
 
 GET    /api/review/due · POST /api/reviews/multi
 
-POST   /api/coaching                  # SSE-Stream
+POST   /api/coaching/sessions         # Create session
+POST   /api/coaching/sessions/{id}/turn  # SSE-Stream turn
+POST   /api/coaching/sessions/{id}/end   # End session, get summary + quiz
 
 GET    /api/analytics/summary · /daily · /monthly
 
