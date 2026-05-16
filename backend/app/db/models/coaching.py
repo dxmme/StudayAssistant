@@ -20,6 +20,9 @@ class CoachingSession(Base):
     diagnostic: Mapped[Optional[Any]] = mapped_column(JSON)
     duration_min: Mapped[Optional[float]] = mapped_column(Float)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # End-of-session conclusion, generated once when the session ends.
+    summary: Mapped[Optional[str]] = mapped_column(Text)
+    quiz: Mapped[Optional[Any]] = mapped_column(JSON)
 
     __table_args__ = (
         Index("ix_coaching_sessions_course_id", "course_id"),

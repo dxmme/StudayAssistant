@@ -17,7 +17,7 @@ from app.db.models.concepts import Concept
 from app.db.models.courses import Course
 from app.db.models.coaching import CoachingSession
 from app.main import app
-from app.services.llm_gateway import StreamDelta, StreamDone, UsageInfo, Message
+from app.services.llm_gateway import LLMResponse, StreamDelta, StreamDone, UsageInfo, Message
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -63,6 +63,8 @@ def mock_llm():
     gateway = MagicMock()
     gateway.responses = []  # list of (text, tokens_in, tokens_out, cache_read)
     gateway.calls = []  # list of (system, messages)
+    # JSON string returned by complete() — used by the end-of-session conclusion.
+    gateway.conclusion_text = '{"summary": "", "quiz": []}'
 
     def complete_stream(system, messages, tier="default", cache_breakpoints=None, max_tokens=1024):
         gateway.calls.append({"system": system, "messages": list(messages)})
@@ -72,7 +74,16 @@ def mock_llm():
             text, ti, to, cr = "Was meinst du?", 100, 50, 0
         return _make_stream_events(text, ti, to, cr)
 
+    def complete(system, messages, tier="default", cache_breakpoints=None, max_tokens=1024):
+        return LLMResponse(
+            text=gateway.conclusion_text,
+            model="test-model",
+            usage=UsageInfo(0, 0, 0, 0),
+            stop_reason="end_turn",
+        )
+
     gateway.complete_stream = complete_stream
+    gateway.complete = complete
     return gateway
 
 
@@ -314,7 +325,7 @@ def test_turn_includes_socratic_rules_in_system_prompt(coaching_client, db_sessi
         _consume_sse(r)
 
     sys_prompt = mock_llm.calls[0]["system"]
-    assert "NEVER give a direct answer" in sys_prompt
+    assert "Socratic tutor" in sys_prompt
     assert "SVD" in sys_prompt  # concept name
     assert "$...$" in sys_prompt  # LaTeX rule
 
@@ -336,6 +347,49 @@ def test_turn_invokes_rag_with_concept_query(coaching_client, db_session, mock_l
     assert call.args[0] == "c1"  # course_id
     assert "SVD" in call.args[1]  # query contains concept name
     assert call.kwargs.get("k") == 5 or (len(call.args) >= 3 and call.args[2] == 5)
+
+
+def test_turn_strips_ready_sentinel_and_flags_done(coaching_client, db_session, mock_llm):
+    _seed_course_and_concept(db_session)
+    session_id = coaching_client.post(
+        "/api/coaching/sessions", json={"course_id": "c1", "concept_id": "k1"}
+    ).json()["session_id"]
+
+    mock_llm.responses.append(("Verstanden? Fass es zusammen.\n[[READY]]", 50, 10, 0))
+    with coaching_client.stream(
+        "POST", f"/api/coaching/sessions/{session_id}/turn", json={"user_message": "x"}
+    ) as r:
+        events = _consume_sse(r)
+
+    deltas = [e for e in events if e["type"] == "delta"]
+    dones = [e for e in events if e["type"] == "done"]
+    text = "".join(d["text"] for d in deltas)
+    assert "[[READY]]" not in text
+    assert text.rstrip() == "Verstanden? Fass es zusammen."
+    assert dones[0]["ready"] is True
+
+    db_session.expire_all()
+    row = db_session.get(CoachingSession, session_id)
+    assert "[[READY]]" not in row.transcript
+    assert "[ASSISTANT]: Verstanden? Fass es zusammen." in row.transcript
+
+
+def test_turn_without_sentinel_reports_ready_false(coaching_client, db_session, mock_llm):
+    _seed_course_and_concept(db_session)
+    session_id = coaching_client.post(
+        "/api/coaching/sessions", json={"course_id": "c1", "concept_id": "k1"}
+    ).json()["session_id"]
+
+    mock_llm.responses.append(("Was meinst du dazu genau?", 50, 10, 0))
+    with coaching_client.stream(
+        "POST", f"/api/coaching/sessions/{session_id}/turn", json={"user_message": "x"}
+    ) as r:
+        events = _consume_sse(r)
+
+    deltas = [e for e in events if e["type"] == "delta"]
+    dones = [e for e in events if e["type"] == "done"]
+    assert "".join(d["text"] for d in deltas) == "Was meinst du dazu genau?"
+    assert dones[0]["ready"] is False
 
 
 # ── Endpoint: end session ─────────────────────────────────────────────────────
@@ -371,6 +425,80 @@ def test_end_session_sets_duration_and_returns_turn_count(coaching_client, db_se
 def test_end_session_404_unknown(coaching_client):
     r = coaching_client.post(f"/api/coaching/sessions/{uuid.uuid4()}/end")
     assert r.status_code == 404
+
+
+def test_end_session_advances_concept_to_coached(coaching_client, db_session):
+    _seed_course_and_concept(db_session)
+    concept = db_session.get(Concept, "k1")
+    assert concept.stage == "new"
+
+    session_id = coaching_client.post(
+        "/api/coaching/sessions", json={"course_id": "c1", "concept_id": "k1"}
+    ).json()["session_id"]
+
+    r = coaching_client.post(f"/api/coaching/sessions/{session_id}/end")
+    assert r.status_code == 200
+
+    db_session.refresh(concept)
+    assert concept.stage == "coached"
+
+
+def _run_turn(coaching_client, session_id, mock_llm, text="Frage?"):
+    mock_llm.responses.append((text, 50, 10, 0))
+    with coaching_client.stream(
+        "POST", f"/api/coaching/sessions/{session_id}/turn", json={"user_message": "x"}
+    ) as r:
+        _consume_sse(r)
+
+
+def test_end_session_returns_summary_and_quiz(coaching_client, db_session, mock_llm):
+    _seed_course_and_concept(db_session)
+    session_id = coaching_client.post(
+        "/api/coaching/sessions", json={"course_id": "c1", "concept_id": "k1"}
+    ).json()["session_id"]
+    _run_turn(coaching_client, session_id, mock_llm)
+
+    mock_llm.conclusion_text = json.dumps(
+        {
+            "summary": "Die SVD zerlegt eine Matrix.",
+            "quiz": [
+                {"question": "Q1?", "options": ["a", "b", "c"], "correct_index": 0, "explanation": "e"},
+                {"question": "Q2?", "options": ["a", "b"], "correct_index": 1, "explanation": "e"},
+            ],
+        }
+    )
+
+    r = coaching_client.post(f"/api/coaching/sessions/{session_id}/end")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["summary"] == "Die SVD zerlegt eine Matrix."
+    assert len(body["quiz"]) == 2
+    assert body["quiz"][0]["correct_index"] == 0
+
+    db_session.expire_all()
+    row = db_session.get(CoachingSession, session_id)
+    assert row.summary == "Die SVD zerlegt eine Matrix."
+    assert len(row.quiz) == 2
+
+
+def test_end_session_conclusion_failure_still_ends_and_coaches(coaching_client, db_session, mock_llm):
+    _seed_course_and_concept(db_session)
+    concept = db_session.get(Concept, "k1")
+    session_id = coaching_client.post(
+        "/api/coaching/sessions", json={"course_id": "c1", "concept_id": "k1"}
+    ).json()["session_id"]
+    _run_turn(coaching_client, session_id, mock_llm)
+
+    mock_llm.conclusion_text = "this is not valid json {{{"
+
+    r = coaching_client.post(f"/api/coaching/sessions/{session_id}/end")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["summary"] is None
+    assert body["quiz"] == []
+
+    db_session.refresh(concept)
+    assert concept.stage == "coached"
 
 
 # ── Endpoint: GET session ─────────────────────────────────────────────────────

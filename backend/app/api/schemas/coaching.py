@@ -19,10 +19,19 @@ class CoachingTurnRequest(BaseModel):
     user_message: str
 
 
+class QuizQuestion(BaseModel):
+    question: str
+    options: list[str]
+    correct_index: int
+    explanation: str
+
+
 class CoachingSessionEnded(BaseModel):
     session_id: str
     duration_min: float
     turn_count: int
+    summary: Optional[str] = None
+    quiz: list[QuizQuestion] = []
 
 
 class CoachingSessionResponse(BaseModel):
@@ -33,6 +42,8 @@ class CoachingSessionResponse(BaseModel):
     started_at: Optional[datetime]
     duration_min: Optional[float]
     diagnostic: Optional[Any]
+    summary: Optional[str] = None
+    quiz: Optional[list[QuizQuestion]] = None
 
     model_config = {"from_attributes": True}
 

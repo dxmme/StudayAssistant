@@ -4,7 +4,7 @@ import re
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Iterator
+from typing import Any, Iterator
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -22,7 +22,8 @@ from app.db.models.coaching import CoachingSession
 from app.db.models.concepts import Concept
 from app.db.models.courses import Course
 from app.db.session import get_db
-from app.services.coaching_prompt import build_system_prompt
+from app.services.coaching_prompt import SENTINEL, Mode, build_system_prompt
+from app.services.coaching_summary import generate_conclusion
 from app.services.llm_gateway import LLMGateway, Message, StreamDelta, StreamDone
 from app.services.rag import RAGService, get_rag_service
 
@@ -149,7 +150,8 @@ def turn(
     # Build system prompt with RAG context
     rag_query = " ".join(filter(None, [concept.name, concept.summary]))
     hits = rag.search(session.course_id or "", rag_query, k=5) if session.course_id else []
-    system_prompt = build_system_prompt(concept, hits)
+    mode: Mode = "deep" if concept.stage in ("new", "explained") else "review"
+    system_prompt = build_system_prompt(concept, hits, mode)
 
     # Build messages list from transcript history + new user_message
     history = parse_transcript(session.transcript)
@@ -172,6 +174,7 @@ def turn(
 
     def event_generator() -> Iterator[bytes]:
         full_response = ""
+        flushed = 0  # chars of `full_response` already streamed to the client
         usage_info = {"tokens_in": 0, "tokens_out": 0, "cache_read": 0}
         try:
             for event in llm.complete_stream(
@@ -182,7 +185,13 @@ def turn(
             ):
                 if isinstance(event, StreamDelta):
                     full_response += event.text
-                    yield f'data: {json.dumps({"type": "delta", "text": event.text})}\n\n'.encode()
+                    # Withhold a trailing window that could be a [[READY]] sentinel,
+                    # so the machine signal never reaches the user's screen.
+                    safe = len(full_response.rstrip()) - len(SENTINEL)
+                    if safe > flushed:
+                        chunk = full_response[flushed:safe]
+                        flushed = safe
+                        yield f'data: {json.dumps({"type": "delta", "text": chunk})}\n\n'.encode()
                 elif isinstance(event, StreamDone):
                     usage_info = {
                         "tokens_in": event.usage.input_tokens,
@@ -194,8 +203,18 @@ def turn(
             yield f'data: {json.dumps({"type": "error", "message": str(exc)})}\n\n'.encode()
             return
 
-        # Persist updated transcript
-        session.transcript = append_turn(session.transcript, user_text, full_response)
+        # Resolve the sentinel: if the coach signalled readiness, strip it from
+        # the visible/persisted text and surface it as a `ready` flag instead.
+        stripped = full_response.rstrip()
+        ready = stripped.endswith(SENTINEL)
+        clean = stripped[: -len(SENTINEL)].rstrip() if ready else full_response
+
+        # Flush any remaining (non-sentinel) text held back by the buffer.
+        if len(clean) > flushed:
+            yield f'data: {json.dumps({"type": "delta", "text": clean[flushed:]})}\n\n'.encode()
+
+        # Persist updated transcript (use api_user, not raw user_text, since api_user has fallbacks for empty input)
+        session.transcript = append_turn(session.transcript, api_user, clean)
         db.commit()
 
         latency_ms = int((time.monotonic() - start) * 1000)
@@ -206,7 +225,8 @@ def turn(
                 "concept_id": session.concept_id,
                 "turn_index": turn_index,
                 "user_message_chars": len(user_text),
-                "assistant_message_chars": len(full_response),
+                "assistant_message_chars": len(clean),
+                "ready": ready,
                 "tokens_in": usage_info["tokens_in"],
                 "tokens_out": usage_info["tokens_out"],
                 "cache_read": usage_info["cache_read"],
@@ -214,7 +234,7 @@ def turn(
             },
         )
 
-        yield f'data: {json.dumps({"type": "done", **usage_info})}\n\n'.encode()
+        yield f'data: {json.dumps({"type": "done", "ready": ready, **usage_info})}\n\n'.encode()
 
     return StreamingResponse(
         event_generator(),
@@ -230,6 +250,8 @@ def turn(
 def end_session(
     session_id: str,
     db: Session = Depends(get_db),
+    llm: LLMGateway = Depends(get_llm_gateway),
+    rag: RAGService = Depends(get_rag),
 ) -> CoachingSessionEnded:
     session = db.get(CoachingSession, session_id)
     if not session:
@@ -242,12 +264,33 @@ def end_session(
         (datetime.now(timezone.utc) - started).total_seconds() / 60.0 if started else 0.0
     )
     session.duration_min = duration_min
+
+    # Advance the learn-mode lifecycle: a finished coaching session marks the
+    # concept as 'coached'. Cards are generated separately (not here).
+    concept = db.get(Concept, session.concept_id) if session.concept_id else None
+    if concept and concept.stage in ("new", "explained"):
+        concept.stage = "coached"
+
+    # Generate the end-of-session conclusion (recap summary + mini-quiz). Best
+    # effort: a generation failure must not block the session from ending, and
+    # the stage transition above stands regardless.
+    summary: str | None = None
+    quiz: list[dict[str, Any]] = []
+    if concept and session.transcript:
+        rag_query = " ".join(filter(None, [concept.name, concept.summary]))
+        hits = rag.search(session.course_id or "", rag_query, k=5) if session.course_id else []
+        summary, quiz = generate_conclusion(concept, session.transcript, hits, llm)
+        session.summary = summary
+        session.quiz = quiz
+
     db.commit()
 
     return CoachingSessionEnded(
         session_id=session.id,
         duration_min=duration_min,
         turn_count=count_turns(session.transcript),
+        summary=summary,
+        quiz=quiz,  # type: ignore[arg-type]
     )
 
 
